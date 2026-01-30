@@ -1,0 +1,38 @@
+
+
+services:
+  api:
+    build: ./api
+    ports:
+      - "3030:3030"
+    env_file:
+      - ./api/.env
+
+  worker:
+    build: ./api
+    env_file:
+      - ./api/.env
+    depends_on:
+      - postgres
+    command: ["node", "dist/worker/ingestion.worker.js"]
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: documentai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

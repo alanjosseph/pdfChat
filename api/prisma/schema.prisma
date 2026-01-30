@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum IngestionStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ChunkType {
+  TEXT
+  TABLE
+  FIGURE_SUMMARY
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  documents    Document[]
+  chatSessions ChatSession[]
+}
+
+model Document {
+  id               String         @id @default(uuid())
+  ownerUserId      String
+  title            String?
+  originalFileName String
+  s3Bucket         String
+  s3Key            String         @unique
+  pageCount        Int?
+  status           DocumentStatus @default(UPLOADED)
+  createdAt        DateTime       @default(now())
+
+  owner        User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  pages        DocumentPage[]
+  chunks       DocumentChunk[]
+  chatSessions ChatSession[]
+
+  ingestionJob DocumentIngestionJob?
+
+  @@index([ownerUserId, createdAt])
+}
+
+model DocumentPage {
+  id         String   @id @default(uuid())
+  documentId String
+  pageNumber Int // starts at 1
+  s3ImageKey String? // rendered page image for vision/graphs later
+  text       String? // optional raw per-page text
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, pageNumber])
+  @@index([documentId, pageNumber])
+}
+
+model DocumentChunk {
+  id          String    @id @default(uuid())
+  documentId  String
+  pageNumber  Int
+  chunkIndex  Int
+  content     String
+  contentType ChunkType @default(TEXT)
+
+  // pgvector column. You will add it via SQL migration (see below).
+  embedding Unsupported("vector")?
+
+  tokenCount Int?
+  createdAt  DateTime @default(now())
+
+  document  Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  citations MessageCitation[]
+
+  @@index([documentId, pageNumber])
+  @@index([documentId, chunkIndex])
+}
+
+model DocumentIngestionJob {
+  id         String          @id @default(uuid())
+  documentId String          @unique
+  status     IngestionStatus @default(QUEUED)
+
+  attempts  Int       @default(0)
+  lockedAt  DateTime?
+  lockedBy  String?
+  lastError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+model ChatSession {
+  id          String   @id @default(uuid())
+  ownerUserId String
+  documentId  String
+  title       String?
+  createdAt   DateTime @default(now())
+
+  owner    User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  document Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([ownerUserId, createdAt])
+  @@index([documentId, createdAt])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  session   ChatSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  citations MessageCitation[]
+
+  @@index([sessionId, createdAt])
+}
+
+model MessageCitation {
+  id         String   @id @default(uuid())
+  messageId  String
+  chunkId    String
+  pageNumber Int
+  quote      String?
+  score      Float?
+  createdAt  DateTime @default(now())
+
+  message ChatMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chunk   DocumentChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([chunkId])
+}
