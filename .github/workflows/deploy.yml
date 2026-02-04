@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  push:
+    branches: [develop, production]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Decide target
+        id: target
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "production" ]; then
+            echo "dir=/home/${{ secrets.EC2_USER }}/apps/documentai-prod" >> $GITHUB_OUTPUT
+            echo "env_secret=PROD_ENV_FILE" >> $GITHUB_OUTPUT
+          else
+            echo "dir=/home/${{ secrets.EC2_USER }}/apps/documentai-staging" >> $GITHUB_OUTPUT
+            echo "env_secret=STAGING_ENV_FILE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Upload project to EC2 (rsync)
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude "node_modules" \
+            --exclude ".env" \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ steps.target.outputs.dir }}
+
+      - name: Write env file on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          set -e
+          EOF
+
+          # write env file via SSH heredoc
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${{ steps.target.outputs.dir }}/api/.env" << EOF
+${{ secrets[steps.target.outputs.env_secret] }}
+EOF
+
+      - name: Deploy with Docker Compose
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          set -e
+          cd ${{ steps.target.outputs.dir }}
+
+          # Build & restart
+          docker compose up -d --build
+
+          # Optional cleanup
+          docker image prune -f
+          EOF
