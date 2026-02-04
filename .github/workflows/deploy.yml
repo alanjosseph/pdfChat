@@ -13,15 +13,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Decide target
-        id: target
+      - name: Decide target directory
         run: |
           if [ "${GITHUB_REF_NAME}" = "production" ]; then
-            echo "dir=/home/${{ secrets.EC2_USER }}/apps/documentai-prod" >> $GITHUB_OUTPUT
-            echo "env_secret=PROD_ENV_FILE" >> $GITHUB_OUTPUT
+            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-prod" >> $GITHUB_ENV
           else
-            echo "dir=/home/${{ secrets.EC2_USER }}/apps/documentai-staging" >> $GITHUB_OUTPUT
-            echo "env_secret=STAGING_ENV_FILE" >> $GITHUB_OUTPUT
+            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-staging" >> $GITHUB_ENV
           fi
 
       - name: Setup SSH
@@ -36,28 +33,29 @@ jobs:
             --exclude "node_modules" \
             --exclude ".env" \
             -e "ssh -o StrictHostKeyChecking=no" \
-            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ steps.target.outputs.dir }}
+            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${DEPLOY_DIR}
 
-      - name: Write env file on EC2
+      - name: Write STAGING env file on EC2
+        if: github.ref_name == 'develop'
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          set -e
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${DEPLOY_DIR}/api/.env" <<'EOF'
+          ${{ secrets.STAGING_ENV_FILE }}
           EOF
 
-          # write env file via SSH heredoc
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${{ steps.target.outputs.dir }}/api/.env" << EOF
-${{ secrets[steps.target.outputs.env_secret] }}
-EOF
+      - name: Write PROD env file on EC2
+        if: github.ref_name == 'production'
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${DEPLOY_DIR}/api/.env" <<'EOF'
+          ${{ secrets.PROD_ENV_FILE }}
+          EOF
 
       - name: Deploy with Docker Compose
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<EOF
           set -e
-          cd ${{ steps.target.outputs.dir }}
-
-          # Build & restart
+          cd ${DEPLOY_DIR}
           docker compose up -d --build
-
-          # Optional cleanup
           docker image prune -f
           EOF
