@@ -16,11 +16,11 @@ jobs:
       - name: Decide target directory + project name
         run: |
           if [ "${GITHUB_REF_NAME}" = "production" ]; then
-            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-prod" >> $GITHUB_ENV
+            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/pdfchat-prod" >> $GITHUB_ENV
             echo "COMPOSE_PROJECT=pdfchat-prod" >> $GITHUB_ENV
             echo "ENV_SECRET=PROD_ENV_FILE" >> $GITHUB_ENV
           else
-            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-staging" >> $GITHUB_ENV
+            echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/pdfchat-staging" >> $GITHUB_ENV
             echo "COMPOSE_PROJECT=pdfchat-staging" >> $GITHUB_ENV
             echo "ENV_SECRET=STAGING_ENV_FILE" >> $GITHUB_ENV
           fi
