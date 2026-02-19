@@ -43,12 +43,11 @@ jobs:
             -e "ssh -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${DEPLOY_DIR}
 
-      - name: Write env file on EC2 (api/.env)
+      - name: Write api/.env on EC2
+        env:
+          ENV_FILE_CONTENT: ${{ secrets[env.ENV_SECRET] }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${DEPLOY_DIR}/api/.env" <<'EOF'
-${{ secrets[env.ENV_SECRET] }}
-EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "printf '%s' \"$ENV_FILE_CONTENT\" > ${DEPLOY_DIR}/api/.env"
 
       - name: Deploy with Docker Compose (isolated per env)
         run: |
