@@ -1,3 +1,9 @@
+ALTER TABLE "DocumentChunk"
+ALTER COLUMN "embedding" TYPE vector(1024);
+
+-- 2) Recreate the HNSW index
+DROP INDEX IF EXISTS "DocumentChunk_embedding_hnsw_idx";
+
 CREATE INDEX IF NOT EXISTS "DocumentChunk_embedding_hnsw_idx"
 ON "DocumentChunk"
 USING hnsw ("embedding" vector_l2_ops);
