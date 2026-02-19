@@ -32,7 +32,7 @@ jobs:
 
       - name: Create deploy directory on EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
 
       - name: Upload project to EC2 (rsync)
         run: |
@@ -51,9 +51,4 @@ jobs:
 
       - name: Deploy with Docker Compose (isolated per env)
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<EOF
-          set -e
-          cd ${DEPLOY_DIR}
-          docker compose -p ${COMPOSE_PROJECT} up -d --build
-          docker image prune -f
-          EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cd ${DEPLOY_DIR} && docker compose -p ${COMPOSE_PROJECT} up -d --build && docker image prune -f"
