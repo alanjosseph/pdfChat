@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [develop, production]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -12,18 +13,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Decide target directory
+      - name: Decide target directory + project name
         run: |
           if [ "${GITHUB_REF_NAME}" = "production" ]; then
             echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-prod" >> $GITHUB_ENV
+            echo "COMPOSE_PROJECT=pdfchat-prod" >> $GITHUB_ENV
+            echo "ENV_SECRET=PROD_ENV_FILE" >> $GITHUB_ENV
           else
             echo "DEPLOY_DIR=/home/${{ secrets.EC2_USER }}/apps/documentai-staging" >> $GITHUB_ENV
+            echo "COMPOSE_PROJECT=pdfchat-staging" >> $GITHUB_ENV
+            echo "ENV_SECRET=STAGING_ENV_FILE" >> $GITHUB_ENV
           fi
 
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Create deploy directory on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}"
 
       - name: Upload project to EC2 (rsync)
         run: |
@@ -34,27 +43,18 @@ jobs:
             -e "ssh -o StrictHostKeyChecking=no" \
             ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${DEPLOY_DIR}
 
-      - name: Write STAGING env file on EC2
-        if: github.ref_name == 'develop'
+      - name: Write env file on EC2 (api/.env)
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${DEPLOY_DIR}/api/.env" <<'EOF'
-          ${{ secrets.STAGING_ENV_FILE }}
-          EOF
+${{ secrets[env.ENV_SECRET] }}
+EOF
 
-      - name: Write PROD env file on EC2
-        if: github.ref_name == 'production'
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p ${DEPLOY_DIR}/api"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "cat > ${DEPLOY_DIR}/api/.env" <<'EOF'
-          ${{ secrets.PROD_ENV_FILE }}
-          EOF
-
-      - name: Deploy with Docker Compose
+      - name: Deploy with Docker Compose (isolated per env)
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} <<EOF
           set -e
           cd ${DEPLOY_DIR}
-          docker compose up -d --build
+          docker compose -p ${COMPOSE_PROJECT} up -d --build
           docker image prune -f
           EOF
