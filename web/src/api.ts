@@ -109,6 +109,18 @@ export async function listMyDocuments() {
     }>>;
 }
 
+export async function getDocumentViewUrl(documentId: string) {
+    const res = await fetch(`/api/documents/${documentId}/view`, {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${getToken()}`,
+        },
+    });
+
+    if (!res.ok) throw new Error("Failed to get document view URL");
+    return (await res.json()) as Promise<{ url: string }>;
+}
+
 export async function chatAsk(documentId: string, sessionId: string | null, message: string){
     const token = getToken();
     const res = await fetch('/api/chat', {

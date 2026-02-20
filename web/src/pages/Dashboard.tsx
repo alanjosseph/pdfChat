@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchMe, logoutApi, listMyDocuments, chatAsk } from '../api';
+import { fetchMe, logoutApi, listMyDocuments, chatAsk, getDocumentViewUrl } from '../api';
 import { clearAuth } from '../auth';
 import { useNavigate } from 'react-router-dom';
 import PdfUploader from '../components/PdfUploader';
 import logo from '../assets/Logo2.png'
 import title from '../assets/Title.png'
 
+type Citation = {
+    label: string;
+    pageNumber: number;
+    preview?: string;
+    chunkId?: string;
+    score?: number;
+};
+
 type ChatMessage = {
     id: string;
     role: 'user' | 'assistant';
     content: string;
     timestamp: string;
+    citations?: Citation[]; 
 };
 
 type DocItem = {
@@ -37,6 +46,9 @@ export default function Dashboard() {
 
     const [chatByDoc, setChatByDoc] = useState<Record<string, ChatMessage[]>>({});
     const [sessionByDoc, setSessionByDoc] = useState<Record<string, string | null>>({});
+
+    const [pdfBaseUrl, setPdfBaseUrl] = useState<string | null>(null);
+    const [pdfPage, setPdfPage] = useState<number | null>(null);
 
     const chatByDocRef = useRef(chatByDoc);
     const sessionByDocRef = useRef(sessionByDoc);
@@ -72,7 +84,9 @@ export default function Dashboard() {
             //Auto select the first document
             if (!selectedDocumentId) {
                 const firstReady = docsList.find((d: DocItem) => d.status === 'READY');
-                if(firstReady) setSelectedDocumentId(firstReady.id);
+                if(firstReady) {
+                    await selectDoc(firstReady.id);
+                }
             }
         } catch (e) {
             console.error('Failed to load documents:', e)
@@ -113,7 +127,7 @@ export default function Dashboard() {
         setSessionByDoc(prev => ({ ...prev, [selectedDocumentId]: null }));
     }
 
-    const selectDoc = (docId: string) => {
+    const selectDoc = async (docId: string) => {
         // Save current doc chat before switching
         if (selectedDocumentId) {
             setChatByDoc(prev => ({ ...prev, [selectedDocumentId]: messages }));
@@ -129,6 +143,14 @@ export default function Dashboard() {
 
         setChatError(null);
         setInput('');
+        setPdfPage(null);
+
+        try {
+            const { url } = await getDocumentViewUrl(docId);
+            setPdfBaseUrl(url);
+        } catch (e) {
+            setPdfBaseUrl(null);
+        }
     }
 
 
@@ -173,6 +195,7 @@ export default function Dashboard() {
                 role: 'assistant',
                 content: resp.answer,
                 timestamp: new Date().toISOString(),
+                citations: resp.citations || [],
             };
             setMessages(prev => {
                 const next = [...prev, botMsg];
@@ -307,6 +330,30 @@ export default function Dashboard() {
                                     >
                                         <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
                                         <div style={styles.time}>{new Date(m.timestamp).toLocaleTimeString()}</div>
+                                        {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
+                                            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                                {m.citations.map((c, idx) => (
+                                                    <button
+                                                        key={`${c.label}-${idx}`}
+                                                        onClick={() => {
+                                                            setPdfPage(c.pageNumber);
+                                                            setTimeout(() => setPdfPage(c.pageNumber), 0);
+                                                        }}
+                                                        style={{
+                                                            padding: '4px 8px',
+                                                            fontSize: 12,
+                                                            borderRadius: 8,
+                                                            border: '1px solid rgba(0,0,0,0.15)',
+                                                            background: '#fff',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        title={c.preview || ''}
+                                                    >
+                                                        {c.label} • Page {c.pageNumber}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))
@@ -337,6 +384,35 @@ export default function Dashboard() {
                             Send
                         </button>
                     </div>
+                </section>
+
+                <section style={styles.pdfArea}>
+                    <div style={styles.pdfHeader}>
+                        <div style={{ fontWeight: 700 }}>Document</div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            {pdfBaseUrl && (
+                                <a
+                                    href={pdfBaseUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={styles.openLink}
+                                >
+                                    Open
+                                </a>
+                            )}
+                        </div>
+                    </div>
+
+                    {pdfBaseUrl ? (
+                        <iframe
+                            key={`${selectedDocumentId}-${pdfPage ?? 0}`}
+                            title="PDF Viewer"
+                            src={pdfPage ? `${pdfBaseUrl}#page=${pdfPage}` : pdfBaseUrl}
+                            style={{ width: '100%', height: '100%', border: 'none' }}
+                        />
+                    ) : (
+                        <div style={styles.pdfEmpty}>Select a PDF to preview</div>
+                    )}
                 </section>
             </div>
         </div>
@@ -377,7 +453,7 @@ const styles: Record<string, React.CSSProperties> = {
     main: {
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: '280px 1fr',
+        gridTemplateColumns: '280px 1fr 1fr',
         gap: 12,
         padding: 12,
         minHeight: 0,
@@ -467,5 +543,37 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#fff',
         cursor: 'pointer',
         fontWeight: 600,
+    },
+    pdfArea: {
+        background: '#fff',
+        borderRadius: 12,
+        border: '1px solid rgba(0,0,0,0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        overflow: 'hidden',
+    },
+    pdfHeader: {
+        padding: '12px 14px',
+        borderBottom: '1px solid rgba(0,0,0,0.08)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    openLink: {
+        fontSize: 12,
+        textDecoration: 'none',
+        padding: '6px 10px',
+        border: '1px solid rgba(0,0,0,0.15)',
+        borderRadius: 8,
+        color: '#111',
+    },
+    pdfEmpty: {
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0.65,
+        fontSize: 13,
     },
 };
