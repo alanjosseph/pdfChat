@@ -1,3 +1,5 @@
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ok } from "assert";
@@ -13,6 +15,9 @@ function sanitizeFileName(fileName: string): string {
 
 @Injectable()
 export class DocumentsService {
+
+    private s3C = new S3Client({ region: process.env.AWS_REGION });
+
     constructor(
         private prisma: PrismaService,
         private s3: S3Service,
@@ -101,5 +106,36 @@ export class DocumentsService {
                 createdAt: true,
             }
         });
+    }
+
+    async getPresignedViewUrl(params: {ownerUserId: string, documentId: string}) {
+        const doc = await this.prisma.document.findUnique({
+            where: { id: params.documentId },
+            select: {
+                id:true,
+                ownerUserId: true,
+                s3Bucket: true,
+                s3Key: true,
+                originalFileName: true,
+            },
+        });
+
+        if(!doc) throw new NotFoundException('Document not found');
+        if(doc.ownerUserId !== params.ownerUserId) {
+            throw new ForbiddenException('You do not have permission to access this document');
+        }
+
+        const url = await getSignedUrl(
+            this.s3C,
+            new GetObjectCommand({
+                Bucket: doc.s3Bucket,
+                Key: doc.s3Key,
+                ResponseContentType: 'application/pdf',
+                ResponseContentDisposition: `inline; filename="${doc.originalFileName}"`
+            }),
+            { expiresIn: Number(process.env.PRESIGN_EXPIRES_SECONDS || 600) }
+        );
+
+        return { url };
     }
 }
