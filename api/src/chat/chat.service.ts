@@ -11,6 +11,12 @@ type RetrieveChunk = {
     score: number; //smaler distance is better if using <-> (L2)
 };
 
+function extractUsedLabels(answer: string): Set<string> {
+    // matches [C1], [C2] etc
+    const matches = answer.match(/\[C\d+\]/g) || [];
+    return new Set(matches.map(m => m.replace(/\[|\]/g, ''))); // "C1"
+}
+
 @Injectable()
 export class chatService{
     constructor(
@@ -156,6 +162,30 @@ Return:
             maxTokens: Number(process.env.CHAT_MAX_TOKENS || 700),
         });
 
+        const used = extractUsedLabels(answerText);
+
+        // Only citations actually mentioned in answer
+        const usedCitations = chunks
+            .map((c, i) => ({
+                label: `C${i + 1}`,
+                chunkId: c.id,
+                pageNumber: c.pageNumber,
+                score: c.score,
+                preview: c.content.slice(0, 160),
+            }))
+            .filter(c => used.has(c.label));
+
+        const finalCitations =
+            usedCitations.length > 0
+                ? usedCitations
+                : chunks.slice(0, 2).map((c, i) => ({
+                    label: `C${i + 1}`,
+                    chunkId: c.id,
+                    pageNumber: c.pageNumber,
+                    score: c.score,
+                    preview: c.content.slice(0, 160),
+                }));
+
         // 8) Store assistant message
         const assistantMsg = await this.prisma.chatMessage.create({
             data: {
@@ -171,9 +201,9 @@ Return:
         await this.prisma.messageCitation.createMany({
             data: chunks.map((c) => ({
                 messageId:  assistantMsg.id,
-                chunkId: c.id,
+                chunkId: c.id!,
                 pageNumber:  c.pageNumber,
-                quote: c.content.slice(0, 240),
+                quote: c.content?.slice(0, 240) ?? '',
                 score: c.score,
             })),
         });
@@ -181,13 +211,7 @@ Return:
         return {
             sessionId,
             answer: answerText,
-            citations: chunks.map((c, i) => ({
-                label: `C${i + 1}`,
-                chunkId: c.id,
-                pageNumber: c.pageNumber,
-                score: c.score,
-                preview: c.content.slice(0, 160),
-            })),
+            citations: finalCitations,
         };
     }
 }
