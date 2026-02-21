@@ -3,6 +3,7 @@ import { fetchMe, logoutApi, listMyDocuments, chatAsk, getDocumentViewUrl } from
 import { clearAuth } from '../auth';
 import { useNavigate } from 'react-router-dom';
 import PdfUploader from '../components/PdfUploader';
+import PdfViewer from '../components/PdfViewer';
 import logo from '../assets/Logo2.png'
 import title from '../assets/Title.png'
 
@@ -48,7 +49,8 @@ export default function Dashboard() {
     const [sessionByDoc, setSessionByDoc] = useState<Record<string, string | null>>({});
 
     const [pdfBaseUrl, setPdfBaseUrl] = useState<string | null>(null);
-    const [pdfPage, setPdfPage] = useState<number | null>(null);
+
+    const [targetPdfPage, setTargetPdfPage] = useState<number | null>(null);
 
     const chatByDocRef = useRef(chatByDoc);
     const sessionByDocRef = useRef(sessionByDoc);
@@ -143,7 +145,6 @@ export default function Dashboard() {
 
         setChatError(null);
         setInput('');
-        setPdfPage(null);
 
         try {
             const { url } = await getDocumentViewUrl(docId);
@@ -336,8 +337,9 @@ export default function Dashboard() {
                                                     <button
                                                         key={`${c.label}-${idx}`}
                                                         onClick={() => {
-                                                            setPdfPage(c.pageNumber);
-                                                            setTimeout(() => setPdfPage(c.pageNumber), 0);
+                                                            const p = c.pageNumber;
+                                                            setTargetPdfPage(null);
+                                                            setTimeout(() => setTargetPdfPage(p), 0);
                                                         }}
                                                         style={{
                                                             padding: '4px 8px',
@@ -404,12 +406,9 @@ export default function Dashboard() {
                     </div>
 
                     {pdfBaseUrl ? (
-                        <iframe
-                            key={`${selectedDocumentId}-${pdfPage ?? 0}`}
-                            title="PDF Viewer"
-                            src={pdfPage ? `${pdfBaseUrl}#page=${pdfPage}` : pdfBaseUrl}
-                            style={{ width: '100%', height: '100%', border: 'none' }}
-                        />
+                        <PdfViewer
+                            fileUrl={pdfBaseUrl}
+                            targetPage={targetPdfPage}                        />
                     ) : (
                         <div style={styles.pdfEmpty}>Select a PDF to preview</div>
                     )}
@@ -453,7 +452,7 @@ const styles: Record<string, React.CSSProperties> = {
     main: {
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: '280px 1fr 1fr',
+        gridTemplateColumns: '250px 1fr 1fr',
         gap: 12,
         padding: 12,
         minHeight: 0,
