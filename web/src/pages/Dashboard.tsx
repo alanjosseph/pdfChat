@@ -321,7 +321,7 @@ export default function Dashboard() {
                                         }}
                                         title={isReady ? 'Ready' : 'Processing'}
                                     >
-                                        <div style={{ fontSize: 13, fontWeight: 600 }}>{d.originalFileName}</div>
+                                        <div style={styles.documentName}>{d.originalFileName}</div>
                                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                                             {d.status}
                                             {d.pageCount ? ` • ${d.pageCount} pages` : ''}
@@ -631,5 +631,12 @@ const styles: Record<string, React.CSSProperties> = {
         opacity: 0.65,
         fontSize: 13,
     },
+    documentName: {
+        fontSize: 13,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis', 
+    }
 };
 
