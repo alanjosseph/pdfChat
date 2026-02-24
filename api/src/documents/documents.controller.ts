@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { JwtAuthGuard } from "src/auth/jwt-auth.guard";
 import { DocumentsService } from "./documents.service";
 import { PresignDto } from "./dto/presign.dto";
@@ -35,6 +35,14 @@ export class DocumentsController {
     @Get(':id/view')
     view(@Req() req: any, @Param('id') id: string) {
         return this.docs.getPresignedViewUrl({
+            ownerUserId: req.user.id,
+            documentId: id,
+        });
+    }
+
+    @Delete(':id')
+    async remove(@Req() req: any, @Param('id') id: string) {
+        return this.docs.deleteMine({
             ownerUserId: req.user.id,
             documentId: id,
         });
