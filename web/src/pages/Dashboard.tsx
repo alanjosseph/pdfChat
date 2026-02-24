@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchMe, logoutApi, listMyDocuments, chatAsk, getDocumentViewUrl } from '../api';
+import { fetchMe, logoutApi, listMyDocuments, chatAsk, getDocumentViewUrl, deleteDocument } from '../api';
 import { clearAuth } from '../auth';
 import { useNavigate } from 'react-router-dom';
 import PdfUploader from '../components/PdfUploader';
@@ -213,6 +213,48 @@ export default function Dashboard() {
         }
     };
 
+    const deleteSelectedPdf = async () => {
+        if (!selectedDoc) return;
+
+        const confirmed = window.confirm(
+            `Delete "${selectedDoc.originalFileName}"? This will remove the PDF and its chat history.`,
+        );
+        if (!confirmed) return;
+
+        setChatError(null);
+
+        try {
+            const docId = selectedDoc.id;
+            await deleteDocument(docId);
+
+            const remainingDocs = docs.filter((d) => d.id !== docId);
+            setDocs(remainingDocs);
+
+            setChatByDoc((prev) => {
+                const { [docId]: _removed, ...rest } = prev;
+                return rest;
+            });
+            setSessionByDoc((prev) => {
+                const { [docId]: _removed, ...rest } = prev;
+                return rest;
+            });
+
+            setMessages([]);
+            setSessionId(null);
+            setInput('');
+            setPdfBaseUrl(null);
+            setTargetPdfPage(null);
+            setSelectedDocumentId(null);
+
+            const nextReady = remainingDocs.find((d) => d.status === 'READY');
+            if (nextReady) {
+                await selectDoc(nextReady.id);
+            }
+        } catch (e: any) {
+            setChatError(e.message || 'Failed to delete PDF');
+        }
+    };
+
     return (
         <div style={styles.page}>
             {/* Top bar */}
@@ -238,8 +280,17 @@ export default function Dashboard() {
                 <aside style={styles.sidebar}>
                     <div style={styles.sidebarHeader}>Chats</div>
 
-                    <button style={styles.newChatBtn} onClick={startNewChat}>
-                        Clear Chat
+                    <button
+                        style={{
+                            ...styles.newChatBtn,
+                            opacity: selectedDoc ? 1 : 0.5,
+                            cursor: selectedDoc ? 'pointer' : 'not-allowed',
+                        }}
+                        onClick={deleteSelectedPdf}
+                        disabled={!selectedDoc}
+                        title={selectedDoc ? `Delete ${selectedDoc.originalFileName}` : 'Select a PDF to delete'}
+                    >
+                        Delete PDF
                     </button>
 
                     <div style={{ marginTop: 10 }}>
@@ -270,7 +321,7 @@ export default function Dashboard() {
                                         }}
                                         title={isReady ? 'Ready' : 'Processing'}
                                     >
-                                        <div style={{ fontSize: 13, fontWeight: 600 }}>{d.originalFileName}</div>
+                                        <div style={styles.documentName}>{d.originalFileName}</div>
                                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                                             {d.status}
                                             {d.pageCount ? ` • ${d.pageCount} pages` : ''}
@@ -294,8 +345,13 @@ export default function Dashboard() {
                             </div>
                         </div>
 
-                        <div style={{ fontSize: 12, opacity: 0.7 }}>
-                            {sending ? 'Thinking…' : ''}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <button style={styles.newChatBtn} onClick={startNewChat}>
+                                Clear Chat
+                            </button>
+                            <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                {sending ? 'Thinking...' : ''}
+                            </div>
                         </div>
                     </div>
 
@@ -575,4 +631,12 @@ const styles: Record<string, React.CSSProperties> = {
         opacity: 0.65,
         fontSize: 13,
     },
+    documentName: {
+        fontSize: 13,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis', 
+    }
 };
+

@@ -121,6 +121,18 @@ export async function getDocumentViewUrl(documentId: string) {
     return (await res.json()) as Promise<{ url: string }>;
 }
 
+export async function deleteDocument(documentId: string) {
+    const res = await fetch(`/api/documents/${documentId}`, {
+        method: "DELETE",
+        headers: {
+            Authorization: `Bearer ${getToken()}`,
+        },
+    });
+
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || "Failed to delete document");
+    return res.json() as Promise<{ ok: true }>;
+}
+
 export async function chatAsk(documentId: string, sessionId: string | null, message: string){
     const token = getToken();
     const res = await fetch('/api/chat', {

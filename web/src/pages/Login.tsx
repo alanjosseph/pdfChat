@@ -74,6 +74,10 @@ export default function Login() {
                     {loading ? 'Logging in...' : 'Login'}
                 </button>
 
+                <text style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
+                    For demo username and password click on the link <a href="https://github.com/alanjosseph/pdfChat/blob/feature/deletePdfButton/Readme.md" target="_blank">GitHub</a>
+                </text>
+
                 
             </form>
         </div>

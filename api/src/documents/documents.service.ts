@@ -1,4 +1,4 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -137,5 +137,40 @@ export class DocumentsService {
         );
 
         return { url };
+    }
+
+    async deleteMine(params: { ownerUserId: string; documentId: string }) {
+        const doc = await this.prisma.document.findUnique({
+            where: { id: params.documentId },
+            select: {
+                id: true,
+                ownerUserId: true,
+                s3Bucket: true,
+                s3Key: true,
+            },
+        });
+
+        if (!doc) throw new NotFoundException('Document not found');
+        if (doc.ownerUserId !== params.ownerUserId) {
+            throw new ForbiddenException('You do not have permission to access this document');
+        }
+
+        try{
+            await this.s3C.send(
+                new DeleteObjectCommand({
+                    Bucket: doc.s3Bucket,
+                    Key: doc.s3Key,
+                }),
+            );
+        } catch (err) {
+            // Log and continue (important for reliability)
+            console.error("S3 delete failed (continuing DB delete):", err);
+        }
+
+        await this.prisma.document.delete({
+            where: { id: params.documentId },
+        });
+
+        return { ok: true };
     }
 }
