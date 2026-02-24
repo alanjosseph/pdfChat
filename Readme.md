@@ -82,21 +82,6 @@ This project demonstrates end-to-end engineering of a modern Retrieval-Augmented
 
 ---
 
-## 🗂️ Project Structure
-
-documentai/
-│
-├── api/ # NestJS backend
-│ ├── prisma/ # Prisma schema & migrations
-│ ├── src/
-│
-├── web/ # React frontend (Vite)
-│ ├── src/
-│
-├── docker-compose.yml
-├── .github/workflows/ # CI/CD pipelines
-└── README.md
-
 ## Future Improvements
 
 - Persistent chat history UI (load prior sessions per document)
