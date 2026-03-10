@@ -1,4 +1,4 @@
-# DocumentAI – PDF Chat with AI (RAG + Citations)
+# pdfChat – PDF Chat with AI (RAG + Citations)
 
 DocumentAI is a production-oriented, full-stack web application that lets users **upload PDF documents** and **chat with them using AI-powered question answering**. The system ingests PDFs in the background, extracts text (and tables), generates vector embeddings with **AWS Bedrock**, stores them in **PostgreSQL + pgvector**, and serves **contextual answers with citations** that link directly to the referenced PDF page in the viewer.
 
