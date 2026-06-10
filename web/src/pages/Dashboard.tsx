@@ -4,8 +4,9 @@ import { clearAuth } from '../auth';
 import { useNavigate } from 'react-router-dom';
 import PdfUploader from '../components/PdfUploader';
 import PdfViewer from '../components/PdfViewer';
-import logo from '../assets/Logo2.png'
-import title from '../assets/Title.png'
+import logo from '../assets/Logo3.png';
+import sidebarIcon from '../assets/sidebar.png';
+import './dashboard.css';
 
 type Citation = {
     label: string;
@@ -20,7 +21,7 @@ type ChatMessage = {
     role: 'user' | 'assistant';
     content: string;
     timestamp: string;
-    citations?: Citation[]; 
+    citations?: Citation[];
 };
 
 type DocItem = {
@@ -28,12 +29,18 @@ type DocItem = {
     originalFileName: string;
     status: string;
     pageCount: number | null;
-    createdAt : string;
+    createdAt: string;
 };
+
+const formatStatus = (status: string) => status.toLowerCase().replace(/_/g, ' ');
+const SIDEBAR_TRANSITION_MS = 620;
 
 export default function Dashboard() {
     const navigate = useNavigate();
     const [me, setMe] = useState<any>(null);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [pdfResizePaused, setPdfResizePaused] = useState(false);
+    const [pdfResizeVersion, setPdfResizeVersion] = useState(0);
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -49,20 +56,28 @@ export default function Dashboard() {
     const [sessionByDoc, setSessionByDoc] = useState<Record<string, string | null>>({});
 
     const [pdfBaseUrl, setPdfBaseUrl] = useState<string | null>(null);
-
     const [targetPdfPage, setTargetPdfPage] = useState<number | null>(null);
 
     const chatByDocRef = useRef(chatByDoc);
     const sessionByDocRef = useRef(sessionByDoc);
+    const sidebarTransitionTimerRef = useRef<number | null>(null);
 
     useEffect(() => { chatByDocRef.current = chatByDoc; }, [chatByDoc]);
     useEffect(() => { sessionByDocRef.current = sessionByDoc; }, [sessionByDoc]);
 
+    useEffect(() => {
+        return () => {
+            if (sidebarTransitionTimerRef.current !== null) {
+                window.clearTimeout(sidebarTransitionTimerRef.current);
+            }
+        };
+    }, []);
+
     const selectedDoc = useMemo(
         () => docs.find((d) => d.id === selectedDocumentId) ?? null,
-        [docs, selectedDocumentId]
+        [docs, selectedDocumentId],
     );
-    
+
     useEffect(() => {
         fetchMe()
             .then(setMe)
@@ -83,15 +98,14 @@ export default function Dashboard() {
             const docsList = await listMyDocuments();
             setDocs(docsList);
 
-            //Auto select the first document
             if (!selectedDocumentId) {
                 const firstReady = docsList.find((d: DocItem) => d.status === 'READY');
-                if(firstReady) {
+                if (firstReady) {
                     await selectDoc(firstReady.id);
                 }
             }
         } catch (e) {
-            console.error('Failed to load documents:', e)
+            console.error('Failed to load documents:', e);
         }
     };
 
@@ -127,19 +141,15 @@ export default function Dashboard() {
 
         setChatByDoc(prev => ({ ...prev, [selectedDocumentId]: [] }));
         setSessionByDoc(prev => ({ ...prev, [selectedDocumentId]: null }));
-    }
+    };
 
     const selectDoc = async (docId: string) => {
-        // Save current doc chat before switching
         if (selectedDocumentId) {
             setChatByDoc(prev => ({ ...prev, [selectedDocumentId]: messages }));
             setSessionByDoc(prev => ({ ...prev, [selectedDocumentId]: sessionId }));
         }
 
-        // Switch doc
         setSelectedDocumentId(docId);
-
-        // Restore chat for the new doc (if any)
         setMessages(chatByDocRef.current[docId] ?? []);
         setSessionId(sessionByDocRef.current[docId] ?? null);
 
@@ -152,11 +162,10 @@ export default function Dashboard() {
         } catch (e) {
             setPdfBaseUrl(null);
         }
-    }
-
+    };
 
     const sendMessage = async () => {
-        const text =input.trim();
+        const text = input.trim();
         if (!text) return;
 
         if (!selectedDocumentId) {
@@ -165,7 +174,7 @@ export default function Dashboard() {
         }
 
         if (selectedDoc?.status !== 'READY') {
-            setChatError('That document is not READY yet. Please wait for processing');
+            setChatError('That document is not ready yet. Please wait for processing.');
             return;
         }
 
@@ -255,140 +264,152 @@ export default function Dashboard() {
         }
     };
 
+    const toggleSidebar = () => {
+        setSidebarCollapsed((collapsed) => !collapsed);
+        setPdfResizePaused(true);
+
+        if (sidebarTransitionTimerRef.current !== null) {
+            window.clearTimeout(sidebarTransitionTimerRef.current);
+        }
+
+        sidebarTransitionTimerRef.current = window.setTimeout(() => {
+            setPdfResizePaused(false);
+            setPdfResizeVersion((version) => version + 1);
+            sidebarTransitionTimerRef.current = null;
+        }, SIDEBAR_TRANSITION_MS);
+    };
+
     return (
-        <div style={styles.page}>
-            {/* Top bar */}
-            <header style={styles.topBar}>
-                <div>
-                    <div>
-                        <img src={logo} style={styles.logo}></img>
-                        <img src={title} style={styles.title}></img>
-                    </div>
-                    <div style={styles.subTitle}>
-                        {me ? `Logged in as ${me.userId}${me.name ? ` (${me.name})` : ''}` : 'Loading…'}
+        <div className="dashboard-page">
+            <header className="dashboard-topbar">
+                <div className="dashboard-brand">
+                    <img src={logo} className="dashboard-logo" alt="Document AI" />
+                    <div className="dashboard-brand-text">
+                        <div className="dashboard-product-name">Document AI</div>
+                        <div className="dashboard-session">
+                            {me ? `Signed in as ${me.userId}${me.name ? ` (${me.name})` : ''}` : 'Loading...'}
+                        </div>
                     </div>
                 </div>
 
-                <button onClick={logout} style={styles.logoutBtn}>
+                <button onClick={logout} className="dashboard-button dashboard-button-secondary">
                     Logout
                 </button>
             </header>
 
-            {/* Main layout */}
-            <div style={styles.main}>
-                {/* Sidebar */}
-                <aside style={styles.sidebar}>
-                    <div style={styles.sidebarHeader}>Chats</div>
-
-                    <button
-                        style={{
-                            ...styles.newChatBtn,
-                            opacity: selectedDoc ? 1 : 0.5,
-                            cursor: selectedDoc ? 'pointer' : 'not-allowed',
-                        }}
-                        onClick={deleteSelectedPdf}
-                        disabled={!selectedDoc}
-                        title={selectedDoc ? `Delete ${selectedDoc.originalFileName}` : 'Select a PDF to delete'}
-                    >
-                        Delete PDF
-                    </button>
-
-                    <div style={{ marginTop: 10 }}>
-                        <PdfUploader onUploaded={reloadDocs} />
+            <main className={`dashboard-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
+                <aside className={`dashboard-panel dashboard-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`}>
+                    <div className="dashboard-panel-heading">
+                        <div className="dashboard-sidebar-title">
+                            <p className="dashboard-kicker">Library</p>
+                            <h2>PDFs</h2>
+                        </div>
+                        <div className="dashboard-sidebar-actions">
+                            <button
+                                className="dashboard-icon-button"
+                                onClick={toggleSidebar}
+                                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                                aria-expanded={!sidebarCollapsed}
+                                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                            >
+                                <img
+                                    src={sidebarIcon}
+                                    alt=""
+                                    className="dashboard-sidebar-icon"
+                                />
+                            </button>
+                            <button
+                                className="dashboard-button dashboard-button-danger dashboard-delete-button"
+                                onClick={deleteSelectedPdf}
+                                disabled={!selectedDoc}
+                                title={selectedDoc ? `Delete ${selectedDoc.originalFileName}` : 'Select a PDF to delete'}
+                            >
+                                Delete
+                            </button>
+                        </div>
                     </div>
 
-                    <div style={{ marginTop: 12, fontWeight: 700, fontSize: 13 }}>My PDFs</div>
+                    <div className="dashboard-sidebar-body">
+                        <PdfUploader onUploaded={reloadDocs} />
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
-                        {docs.length === 0 ? (
-                            <div style={{ fontSize: 12, opacity: 0.7 }}>No documents yet.</div>
-                        ) : (
-                            docs.map((d) => {
-                                const isSelected = d.id === selectedDocumentId;
-                                const isReady = d.status === 'READY';
+                        <div className="dashboard-section-title">My PDFs</div>
 
-                                return (
-                                    <button
-                                        key={d.id}
-                                        onClick={() => selectDoc(d.id)}
-                                        style={{
-                                            textAlign: 'left',
-                                            border: isSelected ? '2px solid rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
-                                            borderRadius: 10,
-                                            padding: 10,
-                                            background: isSelected ? '#f1f5ff' : '#fff',
-                                            cursor: 'pointer',
-                                        }}
-                                        title={isReady ? 'Ready' : 'Processing'}
-                                    >
-                                        <div style={styles.documentName}>{d.originalFileName}</div>
-                                        <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                            {d.status}
-                                            {d.pageCount ? ` • ${d.pageCount} pages` : ''}
-                                        </div>
-                                    </button>
-                                );
-                            })
-                        )}
+                        <div className="dashboard-document-list">
+                            {docs.length === 0 ? (
+                                <div className="dashboard-empty-mini">No documents yet.</div>
+                            ) : (
+                                docs.map((d) => {
+                                    const isSelected = d.id === selectedDocumentId;
+                                    const statusClass = `dashboard-status dashboard-status-${d.status.toLowerCase()}`;
+
+                                    return (
+                                        <button
+                                            key={d.id}
+                                            onClick={() => selectDoc(d.id)}
+                                            className={`dashboard-document-card${isSelected ? ' is-selected' : ''}`}
+                                            title={d.status === 'READY' ? 'Ready' : 'Processing'}
+                                        >
+                                            <div className="dashboard-document-name">{d.originalFileName}</div>
+                                            <div className="dashboard-document-meta">
+                                                <span className={statusClass}>{formatStatus(d.status)}</span>
+                                                {d.pageCount ? <span>{d.pageCount} pages</span> : null}
+                                            </div>
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </aside>
 
-                {/* Chat area */}
-                <section style={styles.chatArea}>
-                    <div style={styles.chatHeader}>
+                <section className="dashboard-panel dashboard-chat">
+                    <div className="dashboard-panel-header">
                         <div>
-                            <div style={{ fontWeight: 700 }}>AI Chat</div>
-                            <div style={{ fontSize: 12, opacity: 0.7 }}>
+                            <p className="dashboard-kicker">Assistant</p>
+                            <h2>AI Chat</h2>
+                            <span className="dashboard-panel-subtitle">
                                 {selectedDoc
-                                    ? `Using: ${selectedDoc.originalFileName} (${selectedDoc.status})`
+                                    ? `Using ${selectedDoc.originalFileName} (${formatStatus(selectedDoc.status)})`
                                     : 'Select a PDF to start'}
-                            </div>
+                            </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <button style={styles.newChatBtn} onClick={startNewChat}>
-                                Clear Chat
+                        <div className="dashboard-chat-actions">
+                            <button className="dashboard-button dashboard-button-secondary" onClick={startNewChat}>
+                                Clear chat
                             </button>
-                            <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                {sending ? 'Thinking...' : ''}
-                            </div>
+                            {sending && <span className="dashboard-thinking">Thinking...</span>}
                         </div>
                     </div>
 
                     {chatError && (
-                        <div style={{ padding: 12, color: 'crimson', fontSize: 12 }}>
+                        <div className="dashboard-error" role="alert">
                             {chatError}
                         </div>
                     )}
 
-                    {/* Messages */}
-                    <div style={styles.messages}>
+                    <div className="dashboard-messages">
                         {messages.length === 0 ? (
-                            <div style={styles.emptyState}>
-                                <div style={{ fontSize: 18, fontWeight: 600 }}>Start a conversation</div>
-                                <div style={{ opacity: 0.8, marginTop: 6 }}>
-                                    Upload a PDF, wait until it’s <b>READY</b>, select it on the left, then ask questions.
-                                </div>
+                            <div className="dashboard-empty-state">
+                                <h3>Start a conversation</h3>
+                                <p>
+                                    Upload a PDF, wait until it is ready, select it from the library, then ask a question.
+                                </p>
                             </div>
                         ) : (
                             messages.map((m) => (
                                 <div
                                     key={m.id}
-                                    style={{
-                                        ...styles.messageRow,
-                                        justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
-                                    }}
+                                    className={`dashboard-message-row from-${m.role}`}
                                 >
-                                    <div
-                                        style={{
-                                            ...styles.bubble,
-                                            ...(m.role === 'user' ? styles.userBubble : styles.aiBubble),
-                                        }}
-                                    >
-                                        <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                                        <div style={styles.time}>{new Date(m.timestamp).toLocaleTimeString()}</div>
+                                    <div className="dashboard-message-bubble">
+                                        <div className="dashboard-message-content">{m.content}</div>
+                                        <div className="dashboard-message-time">
+                                            {new Date(m.timestamp).toLocaleTimeString()}
+                                        </div>
+
                                         {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
-                                            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                            <div className="dashboard-citations">
                                                 {m.citations.map((c, idx) => (
                                                     <button
                                                         key={`${c.label}-${idx}`}
@@ -397,17 +418,10 @@ export default function Dashboard() {
                                                             setTargetPdfPage(null);
                                                             setTimeout(() => setTargetPdfPage(p), 0);
                                                         }}
-                                                        style={{
-                                                            padding: '4px 8px',
-                                                            fontSize: 12,
-                                                            borderRadius: 8,
-                                                            border: '1px solid rgba(0,0,0,0.15)',
-                                                            background: '#fff',
-                                                            cursor: 'pointer',
-                                                        }}
+                                                        className="dashboard-citation"
                                                         title={c.preview || ''}
                                                     >
-                                                        {c.label} • Page {c.pageNumber}
+                                                        {c.label} · Page {c.pageNumber}
                                                     </button>
                                                 ))}
                                             </div>
@@ -418,17 +432,16 @@ export default function Dashboard() {
                         )}
                     </div>
 
-                    {/* Input */}
-                    <div style={styles.inputBar}>
+                    <div className="dashboard-input-bar">
                         <input
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             placeholder={
                                 selectedDoc?.status === 'READY'
-                                    ? 'Type a message…'
-                                    : 'Select a READY document first…'
+                                    ? 'Ask a question about this PDF...'
+                                    : 'Select a ready document first...'
                             }
-                            style={styles.input}
+                            className="dashboard-chat-input"
                             disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') sendMessage();
@@ -436,7 +449,7 @@ export default function Dashboard() {
                         />
                         <button
                             onClick={sendMessage}
-                            style={styles.sendBtn}
+                            className="dashboard-button dashboard-button-primary"
                             disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
                         >
                             Send
@@ -444,199 +457,37 @@ export default function Dashboard() {
                     </div>
                 </section>
 
-                <section style={styles.pdfArea}>
-                    <div style={styles.pdfHeader}>
-                        <div style={{ fontWeight: 700 }}>Document</div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            {pdfBaseUrl && (
-                                <a
-                                    href={pdfBaseUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={styles.openLink}
-                                >
-                                    Open
-                                </a>
-                            )}
+                <section className="dashboard-panel dashboard-pdf-panel">
+                    <div className="dashboard-panel-header">
+                        <div>
+                            <p className="dashboard-kicker">Preview</p>
+                            <h2>Document</h2>
                         </div>
+
+                        {pdfBaseUrl && (
+                            <a
+                                href={pdfBaseUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="dashboard-button dashboard-button-secondary"
+                            >
+                                Open
+                            </a>
+                        )}
                     </div>
 
                     {pdfBaseUrl ? (
                         <PdfViewer
                             fileUrl={pdfBaseUrl}
-                            targetPage={targetPdfPage}                        />
+                            targetPage={targetPdfPage}
+                            freezeResize={pdfResizePaused}
+                            resizeVersion={pdfResizeVersion}
+                        />
                     ) : (
-                        <div style={styles.pdfEmpty}>Select a PDF to preview</div>
+                        <div className="dashboard-pdf-empty">Select a PDF to preview</div>
                     )}
                 </section>
-            </div>
+            </main>
         </div>
     );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-    page: {
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#f5f6fa',
-        fontFamily: 'Arial, sans-serif',
-    },
-    topBar: {
-        padding: '14px 18px',
-        background: '#ffffff',
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    logo: {
-        width: 40
-    },
-    title: {
-        width: 90,
-        paddingLeft: 5
-    },
-    subTitle: { fontSize: 12, opacity: 0.7, marginTop: 2 },
-    logoutBtn: {
-        padding: '8px 12px',
-        borderRadius: 8,
-        border: '1px solid rgba(0,0,0,0.15)',
-        background: '#fff',
-        cursor: 'pointer',
-    },
-    main: {
-        flex: 1,
-        display: 'grid',
-        gridTemplateColumns: '250px 1fr 1fr',
-        gap: 12,
-        padding: 12,
-        minHeight: 0,
-    },
-    sidebar: {
-        background: '#fff',
-        borderRadius: 12,
-        padding: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
-        minHeight: 0,
-    },
-    sidebarHeader: { fontWeight: 700, fontSize: 14 },
-    newChatBtn: {
-        padding: '10px 12px',
-        borderRadius: 10,
-        border: '1px solid rgba(0,0,0,0.12)',
-        background: '#fff',
-        cursor: 'pointer',
-        textAlign: 'left',
-        fontWeight: 600,
-    },
-    chatArea: {
-        background: '#fff',
-        borderRadius: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-    },
-    chatHeader: {
-        padding: '12px 14px',
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        alignItems: 'baseline',
-        justifyContent: 'space-between',
-    },
-    messages: {
-        flex: 1,
-        padding: 14,
-        overflowY: 'auto',
-    },
-    emptyState: {
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        textAlign: 'center',
-        padding: 20,
-        opacity: 0.9,
-    },
-    messageRow: {
-        display: 'flex',
-        marginBottom: 10,
-    },
-    bubble: {
-        maxWidth: '70%',
-        padding: '10px 12px',
-        borderRadius: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        fontSize: 14,
-    },
-    userBubble: { background: '#eef2ff' },
-    aiBubble: { background: '#f7f7f7' },
-    time: { fontSize: 11, opacity: 0.6, marginTop: 6, textAlign: 'right' },
-    inputBar: {
-        padding: 12,
-        borderTop: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        gap: 10,
-    },
-    input: {
-        flex: 1,
-        padding: '10px 12px',
-        borderRadius: 10,
-        border: '1px solid rgba(0,0,0,0.15)',
-        fontSize: 14,
-        outline: 'none',
-    },
-    sendBtn: {
-        padding: '10px 14px',
-        borderRadius: 10,
-        border: '1px solid rgba(0,0,0,0.15)',
-        background: '#fff',
-        cursor: 'pointer',
-        fontWeight: 600,
-    },
-    pdfArea: {
-        background: '#fff',
-        borderRadius: 12,
-        border: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        overflow: 'hidden',
-    },
-    pdfHeader: {
-        padding: '12px 14px',
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    openLink: {
-        fontSize: 12,
-        textDecoration: 'none',
-        padding: '6px 10px',
-        border: '1px solid rgba(0,0,0,0.15)',
-        borderRadius: 8,
-        color: '#111',
-    },
-    pdfEmpty: {
-        flex: 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: 0.65,
-        fontSize: 13,
-    },
-    documentName: {
-        fontSize: 13,
-        fontWeight: 600,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis', 
-    }
-};
-

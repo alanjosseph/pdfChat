@@ -33,10 +33,11 @@ export default function PdfUploader({onUploaded}: { onUploaded: () => void }) {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <label style={{ fontWeight: 700, fontSize: 13 }}>Upload PDF</label>
+        <div className="dashboard-uploader">
+            <label className="dashboard-uploader-label">Upload PDF</label>
 
             <input
+                className="dashboard-file-input"
                 type="file"
                 accept="application/pdf,.pdf"
                 disabled={busy}
@@ -45,16 +46,16 @@ export default function PdfUploader({onUploaded}: { onUploaded: () => void }) {
 
             {progress !== null && (
                 <div>
-                    <div style={{ fontSize: 12, opacity: 0.8 }}>Progress: {progress}%</div>
-                    <div style={{ height: 8, background: '#eee', borderRadius: 999 }}>
-                        <div style={{ width: `${progress}%`, height: 8, background: '#8aa2ff', borderRadius: 999 }} />
+                    <div className="dashboard-progress-label">Progress: {progress}%</div>
+                    <div className="dashboard-progress-track">
+                        <div className="dashboard-progress-fill" style={{ width: `${progress}%` }} />
                     </div>
                 </div>
             )}
 
-            {error && <div style={{ color: 'crimson', fontSize: 12 }}>{error}</div>}
+            {error && <div className="dashboard-uploader-error">{error}</div>}
 
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
+            <div className="dashboard-uploader-note">
                 Upload goes directly to S3 using a presigned URL (fast + scalable).
             </div>
         </div>

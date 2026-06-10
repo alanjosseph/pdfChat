@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
@@ -6,60 +6,73 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 type Props = {
     fileUrl: string;
-    targetPage?: number | null; // <- when this changes, we scroll
+    targetPage?: number | null;
     headers?: Record<string, string>;
+    freezeResize?: boolean;
+    resizeVersion?: number;
 };
 
-export default function PdfViewer({ fileUrl, targetPage, headers }: Props) {
+export default function PdfViewer({
+    fileUrl,
+    targetPage,
+    headers,
+    freezeResize = false,
+    resizeVersion = 0,
+}: Props) {
     const [numPages, setNumPages] = useState(0);
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const [width, setWidth] = useState<number>(700);
 
-    // One ref per page container so we can scroll to it
     const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const measureWidth = useCallback(() => {
+        if (!wrapRef.current) return;
+        setWidth(Math.max(320, wrapRef.current.clientWidth - 24));
+    }, []);
 
-    // Responsive width so pages don't get cropped
     useEffect(() => {
         if (!wrapRef.current) return;
         const el = wrapRef.current;
 
         const ro = new ResizeObserver(() => {
-            setWidth(Math.max(320, el.clientWidth - 24));
+            if (!freezeResize) {
+                setWidth(Math.max(320, el.clientWidth - 24));
+            }
         });
 
         ro.observe(el);
-        setWidth(Math.max(320, el.clientWidth - 24));
+        if (!freezeResize) {
+            setWidth(Math.max(320, el.clientWidth - 24));
+        }
         return () => ro.disconnect();
-    }, []);
+    }, [freezeResize]);
 
-    // If PDF requires auth headers, use object form
+    useEffect(() => {
+        if (!freezeResize) {
+            measureWidth();
+        }
+    }, [freezeResize, measureWidth, resizeVersion]);
+
     const file = useMemo(() => {
         return headers ? { url: fileUrl, httpHeaders: headers } : fileUrl;
     }, [fileUrl, headers]);
 
-    // Smooth scroll when targetPage changes
     useEffect(() => {
         if (!targetPage) return;
         const node = pageRefs.current[targetPage];
         if (!node) return;
 
         node.scrollIntoView({ behavior: "smooth", block: "start" });
-
-        // Optional: quick highlight effect
         node.animate(
-            [{ background: "rgba(99,102,241,0.18)" }, { background: "transparent" }],
-            { duration: 600 }
+            [{ background: "rgba(96, 165, 250, 0.16)" }, { background: "#f8fafc" }],
+            { duration: 600 },
         );
     }, [targetPage]);
 
     return (
-        <div
-            ref={wrapRef}
-            style={{ height: "100%", overflow: "auto", padding: 10 }}
-        >
+        <div ref={wrapRef} className="pdf-viewer-scroll">
             <Document
                 file={file}
-                loading={<div style={{ opacity: 0.7 }}>Loading PDF…</div>}
+                loading={<div className="pdf-viewer-loading">Loading PDF...</div>}
                 onLoadSuccess={(pdf) => setNumPages(pdf.numPages)}
                 onLoadError={(e) => console.error("Failed to load PDF:", e)}
             >
@@ -71,13 +84,9 @@ export default function PdfViewer({ fileUrl, targetPage, headers }: Props) {
                             ref={(el) => {
                                 pageRefs.current[pageNumber] = el;
                             }}
-                            style={{
-                                padding: "10px 0",
-                                borderBottom: "1px solid rgba(0,0,0,0.06)",
-                                scrollMarginTop: 12,
-                            }}
+                            className="pdf-viewer-page"
                         >
-                            <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 6 }}>
+                            <div className="pdf-viewer-page-label">
                                 Page {pageNumber}
                             </div>
 
