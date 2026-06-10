@@ -13,6 +13,36 @@
         linear-gradient(135deg, #080c14, #111827 58%, #0b1120);
 }
 
+.dashboard-page,
+.dashboard-page * {
+    scrollbar-color: rgba(147, 197, 253, 0.44) rgba(15, 23, 42, 0.42);
+    scrollbar-width: thin;
+}
+
+.dashboard-page *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.dashboard-page *::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.42);
+    border-radius: 999px;
+}
+
+.dashboard-page *::-webkit-scrollbar-thumb {
+    background: rgba(147, 197, 253, 0.38);
+    border: 2px solid rgba(15, 23, 42, 0.42);
+    border-radius: 999px;
+}
+
+.dashboard-page *::-webkit-scrollbar-thumb:hover {
+    background: rgba(147, 197, 253, 0.62);
+}
+
+.dashboard-page *::-webkit-scrollbar-corner {
+    background: rgba(15, 23, 42, 0.42);
+}
+
 .dashboard-topbar {
     min-height: 72px;
     padding: 14px 22px;
