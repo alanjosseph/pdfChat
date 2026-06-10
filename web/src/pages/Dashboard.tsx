@@ -34,6 +34,9 @@ type DocItem = {
 
 const formatStatus = (status: string) => status.toLowerCase().replace(/_/g, ' ');
 const SIDEBAR_TRANSITION_MS = 620;
+const PANEL_RESIZER_WIDTH = 12;
+const CHAT_PANEL_MIN_WIDTH = 360;
+const DOCUMENT_PANEL_MIN_WIDTH = 360;
 
 export default function Dashboard() {
     const navigate = useNavigate();
@@ -41,6 +44,8 @@ export default function Dashboard() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [pdfResizePaused, setPdfResizePaused] = useState(false);
     const [pdfResizeVersion, setPdfResizeVersion] = useState(0);
+    const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
+    const [isPanelResizing, setIsPanelResizing] = useState(false);
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -61,6 +66,7 @@ export default function Dashboard() {
     const chatByDocRef = useRef(chatByDoc);
     const sessionByDocRef = useRef(sessionByDoc);
     const sidebarTransitionTimerRef = useRef<number | null>(null);
+    const dashboardWorkspaceRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => { chatByDocRef.current = chatByDoc; }, [chatByDoc]);
     useEffect(() => { sessionByDocRef.current = sessionByDoc; }, [sessionByDoc]);
@@ -279,6 +285,45 @@ export default function Dashboard() {
         }, SIDEBAR_TRANSITION_MS);
     };
 
+    const beginPanelResize = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!dashboardWorkspaceRef.current) return;
+
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setIsPanelResizing(true);
+        setPdfResizePaused(true);
+
+        const workspace = dashboardWorkspaceRef.current;
+
+        const updatePanelSizes = (clientX: number) => {
+            const rect = workspace.getBoundingClientRect();
+            const availableWidth = rect.width - PANEL_RESIZER_WIDTH;
+            const pointerOffset = clientX - rect.left - PANEL_RESIZER_WIDTH / 2;
+            const minChat = Math.min(CHAT_PANEL_MIN_WIDTH, availableWidth / 2);
+            const minDocument = Math.min(DOCUMENT_PANEL_MIN_WIDTH, availableWidth / 2);
+            const maxChat = Math.max(minChat, availableWidth - minDocument);
+
+            setChatPanelWidth(Math.min(Math.max(pointerOffset, minChat), maxChat));
+        };
+
+        updatePanelSizes(e.clientX);
+
+        const handlePointerMove = (event: PointerEvent) => {
+            updatePanelSizes(event.clientX);
+        };
+
+        const handlePointerUp = () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+            setIsPanelResizing(false);
+            setPdfResizePaused(false);
+            setPdfResizeVersion((version) => version + 1);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp, { once: true });
+    };
+
     return (
         <div className="dashboard-page">
             <header className="dashboard-topbar">
@@ -297,7 +342,7 @@ export default function Dashboard() {
                 </button>
             </header>
 
-            <main className={`dashboard-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}`}>
+            <main className={`dashboard-layout${sidebarCollapsed ? ' is-sidebar-collapsed' : ''}${isPanelResizing ? ' is-panel-resizing' : ''}`}>
                 <aside className={`dashboard-panel dashboard-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`}>
                     <div className="dashboard-panel-heading">
                         <div className="dashboard-sidebar-title">
@@ -312,11 +357,7 @@ export default function Dashboard() {
                                 aria-expanded={!sidebarCollapsed}
                                 title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                             >
-                                <img
-                                    src={sidebarIcon}
-                                    alt=""
-                                    className="dashboard-sidebar-icon"
-                                />
+                                <img src={sidebarIcon} alt="" className="dashboard-sidebar-icon" />
                             </button>
                             <button
                                 className="dashboard-button dashboard-button-danger dashboard-delete-button"
@@ -362,131 +403,142 @@ export default function Dashboard() {
                     </div>
                 </aside>
 
-                <section className="dashboard-panel dashboard-chat">
-                    <div className="dashboard-panel-header">
-                        <div>
-                            <p className="dashboard-kicker">Assistant</p>
-                            <h2>AI Chat</h2>
-                            <span className="dashboard-panel-subtitle">
-                                {selectedDoc
-                                    ? `Using ${selectedDoc.originalFileName} (${formatStatus(selectedDoc.status)})`
-                                    : 'Select a PDF to start'}
-                            </span>
-                        </div>
-
-                        <div className="dashboard-chat-actions">
-                            <button className="dashboard-button dashboard-button-secondary" onClick={startNewChat}>
-                                Clear chat
-                            </button>
-                            {sending && <span className="dashboard-thinking">Thinking...</span>}
-                        </div>
-                    </div>
-
-                    {chatError && (
-                        <div className="dashboard-error" role="alert">
-                            {chatError}
-                        </div>
-                    )}
-
-                    <div className="dashboard-messages">
-                        {messages.length === 0 ? (
-                            <div className="dashboard-empty-state">
-                                <h3>Start a conversation</h3>
-                                <p>
-                                    Upload a PDF, wait until it is ready, select it from the library, then ask a question.
-                                </p>
+                <div
+                    ref={dashboardWorkspaceRef}
+                    className="dashboard-workspace"
+                    style={chatPanelWidth ? { '--chat-panel-width': `${chatPanelWidth}px` } as React.CSSProperties : undefined}
+                >
+                    <section className="dashboard-panel dashboard-chat">
+                        <div className="dashboard-panel-header">
+                            <div>
+                                <p className="dashboard-kicker">Assistant</p>
+                                <h2>AI Chat</h2>
+                                <span className="dashboard-panel-subtitle">
+                                    {selectedDoc
+                                        ? `Using ${selectedDoc.originalFileName} (${formatStatus(selectedDoc.status)})`
+                                        : 'Select a PDF to start'}
+                                </span>
                             </div>
-                        ) : (
-                            messages.map((m) => (
-                                <div
-                                    key={m.id}
-                                    className={`dashboard-message-row from-${m.role}`}
-                                >
-                                    <div className="dashboard-message-bubble">
-                                        <div className="dashboard-message-content">{m.content}</div>
-                                        <div className="dashboard-message-time">
-                                            {new Date(m.timestamp).toLocaleTimeString()}
-                                        </div>
 
-                                        {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
-                                            <div className="dashboard-citations">
-                                                {m.citations.map((c, idx) => (
-                                                    <button
-                                                        key={`${c.label}-${idx}`}
-                                                        onClick={() => {
-                                                            const p = c.pageNumber;
-                                                            setTargetPdfPage(null);
-                                                            setTimeout(() => setTargetPdfPage(p), 0);
-                                                        }}
-                                                        className="dashboard-citation"
-                                                        title={c.preview || ''}
-                                                    >
-                                                        {c.label} · Page {c.pageNumber}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-
-                    <div className="dashboard-input-bar">
-                        <input
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder={
-                                selectedDoc?.status === 'READY'
-                                    ? 'Ask a question about this PDF...'
-                                    : 'Select a ready document first...'
-                            }
-                            className="dashboard-chat-input"
-                            disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') sendMessage();
-                            }}
-                        />
-                        <button
-                            onClick={sendMessage}
-                            className="dashboard-button dashboard-button-primary"
-                            disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
-                        >
-                            Send
-                        </button>
-                    </div>
-                </section>
-
-                <section className="dashboard-panel dashboard-pdf-panel">
-                    <div className="dashboard-panel-header">
-                        <div>
-                            <p className="dashboard-kicker">Preview</p>
-                            <h2>Document</h2>
+                            <div className="dashboard-chat-actions">
+                                <button className="dashboard-button dashboard-button-secondary" onClick={startNewChat}>
+                                    Clear chat
+                                </button>
+                                {sending && <span className="dashboard-thinking">Thinking...</span>}
+                            </div>
                         </div>
 
-                        {pdfBaseUrl && (
-                            <a
-                                href={pdfBaseUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="dashboard-button dashboard-button-secondary"
-                            >
-                                Open
-                            </a>
+                        {chatError && (
+                            <div className="dashboard-error" role="alert">
+                                {chatError}
+                            </div>
                         )}
-                    </div>
 
-                    {pdfBaseUrl ? (
-                        <PdfViewer
-                            fileUrl={pdfBaseUrl}
-                            targetPage={targetPdfPage}
-                            freezeResize={pdfResizePaused}
-                            resizeVersion={pdfResizeVersion}
-                        />
-                    ) : (
-                        <div className="dashboard-pdf-empty">Select a PDF to preview</div>
-                    )}
-                </section>
+                        <div className="dashboard-messages">
+                            {messages.length === 0 ? (
+                                <div className="dashboard-empty-state">
+                                    <h3>Start a conversation</h3>
+                                    <p>
+                                        Upload a PDF, wait until it is ready, select it from the library, then ask a question.
+                                    </p>
+                                </div>
+                            ) : (
+                                messages.map((m) => (
+                                    <div key={m.id} className={`dashboard-message-row from-${m.role}`}>
+                                        <div className="dashboard-message-bubble">
+                                            <div className="dashboard-message-content">{m.content}</div>
+                                            <div className="dashboard-message-time">
+                                                {new Date(m.timestamp).toLocaleTimeString()}
+                                            </div>
+
+                                            {m.role === 'assistant' && m.citations && m.citations.length > 0 && (
+                                                <div className="dashboard-citations">
+                                                    {m.citations.map((c, idx) => (
+                                                        <button
+                                                            key={`${c.label}-${idx}`}
+                                                            onClick={() => {
+                                                                const p = c.pageNumber;
+                                                                setTargetPdfPage(null);
+                                                                setTimeout(() => setTargetPdfPage(p), 0);
+                                                            }}
+                                                            className="dashboard-citation"
+                                                            title={c.preview || ''}
+                                                        >
+                                                            {c.label} - Page {c.pageNumber}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="dashboard-input-bar">
+                            <input
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder={
+                                    selectedDoc?.status === 'READY'
+                                        ? 'Ask a question about this PDF...'
+                                        : 'Select a ready document first...'
+                                }
+                                className="dashboard-chat-input"
+                                disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') sendMessage();
+                                }}
+                            />
+                            <button
+                                onClick={sendMessage}
+                                className="dashboard-button dashboard-button-primary"
+                                disabled={sending || !selectedDocumentId || selectedDoc?.status !== 'READY'}
+                            >
+                                Send
+                            </button>
+                        </div>
+                    </section>
+
+                    <button
+                        type="button"
+                        className="dashboard-panel-resizer"
+                        onPointerDown={beginPanelResize}
+                        aria-label="Resize chat and document panels"
+                        title="Resize chat and document panels"
+                    />
+
+                    <section className="dashboard-panel dashboard-pdf-panel">
+                        <div className="dashboard-panel-header">
+                            <div>
+                                <p className="dashboard-kicker">Preview</p>
+                                <h2>Document</h2>
+                            </div>
+
+                            {pdfBaseUrl && (
+                                <a
+                                    href={pdfBaseUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="dashboard-button dashboard-button-secondary"
+                                >
+                                    Open
+                                </a>
+                            )}
+                        </div>
+
+                        {pdfBaseUrl ? (
+                            <PdfViewer
+                                fileUrl={pdfBaseUrl}
+                                targetPage={targetPdfPage}
+                                freezeResize={pdfResizePaused}
+                                resizeVersion={pdfResizeVersion}
+                            />
+                        ) : (
+                            <div className="dashboard-pdf-empty">Select a PDF to preview</div>
+                        )}
+                    </section>
+                </div>
             </main>
         </div>
     );
